@@ -11,6 +11,11 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/classrooms/classrooms.component').then(m => m.ClassroomsComponent)
   },
   {
+    path: 'classroom-suspensions',
+    loadComponent: () => import('./pages/classroom-suspensions/classroom-suspensions.component')
+      .then(m => m.ClassroomSuspensionsComponent)
+  },
+  {
     path: 'teachers',
     loadComponent: () => import('./pages/teachers/teachers.component').then(m => m.TeachersComponent)
   },

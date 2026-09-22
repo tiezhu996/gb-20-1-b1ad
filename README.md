@@ -82,6 +82,7 @@ npm start
 | 手动调整 | 支持锁定课程、拖拽调整（后端API就绪） |
 | 冲突检测 | 自动检测教师/教室/班级三类时间冲突 |
 | 调课代课 | 支持课程交换和教师代课安排 |
+| 教室临时停用 | 登记停用区间与原因，批量匹配替代教室或记为停课，锁定课程保护，恢复后重新可用 |
 | 课表查看 | 班级/教师/教室三种视角的课表展示 |
 | 导出功能 | PDF 导出（ReportLab）和图片导出（html2canvas） |
 
@@ -132,11 +133,12 @@ npm start
 │   │   └── admin.py
 │   │
 │   └── scheduling/             # 排课业务应用
-│       ├── models.py           # 课程分配、课表条目、冲突、调课模型
+│       ├── models.py           # 课程分配、课表条目、冲突、调课、教室停用模型
 │       ├── serializers.py
-│       ├── views.py            # 排课、调课、代课、导出 API
+│       ├── views.py            # 排课、调课、代课、停用处置、导出 API
 │       ├── urls.py
 │       ├── admin.py
+│       ├── suspension.py       # 教室停用影响分析与替代教室匹配
 │       ├── csp_solver.py       # CSP 排课算法核心
 │       └── pdf_export.py       # PDF 导出逻辑
 │
@@ -165,6 +167,7 @@ npm start
             └── pages/
                 ├── dashboard/
                 ├── classrooms/
+                ├── classroom-suspensions/
                 ├── teachers/
                 ├── classes/
                 ├── courses/
@@ -268,6 +271,28 @@ docker compose exec backend python manage.py createsuperuser
 | `/api/schedules/substitute/` | POST | 安排代课教师 |
 | `/api/schedules/export_pdf/?type=&id=&semester_id=` | GET | 导出 PDF 课表 |
 | `/api/conflicts/` | GET | 查询冲突列表 |
+| `/api/classroom-suspensions/` | GET/POST | 停用登记列表 / 登记停用（返回受影响课程与替代教室预览） |
+| `/api/classroom-suspensions/{id}/preview/` | GET | 查看受影响课程、候选替代教室与阻断原因 |
+| `/api/classroom-suspensions/{id}/confirm/` | POST | 确认处置：`relocate` 批量调整教室或 `cancel` 批量停课 |
+| `/api/classroom-suspensions/{id}/recover/` | POST | 恢复教室使用（幂等） |
+
+## 教室临时停用说明
+
+教务员在「教室停用」页（教室管理页有快捷入口）登记**停用日期区间和原因**，系统处理流程：
+
+1. **影响分析**：按停用区间覆盖的星期几，列出该教室所有受影响课程；
+2. **替代匹配**：为每门课匹配同类型、容量足够（≥ 班级人数）、启用中、自身未停用且该时段空闲的替代教室，且不得引入教师或班级冲突；教务员可在候选列表中调整选择；
+3. **锁定保护**：锁定课程不能改动；**任一课程无法安置（锁定、无替代教室、教师/班级冲突）时整批保持原课表**，接口返回 409 并逐条说明阻断原因，不写入任何记录；
+4. **整批落库**：确认「调整教室」后一次性写入全部替代安排，或确认「停课」后一次性写入全部停课记录；确认使用行锁 + 状态复查，**重复或并发确认只生效一次**；
+5. **停用约束**：生效期间自动排课不会把课程排到该教室停用区间覆盖的星期，手动排课与调课同样被拒绝；点击「恢复使用」后教室可重新排课（已过区间的历史处置记录保留）；
+6. **结果回读**：课表页刷新即可看到「已调教室 / 已停课」标记，悬停可见停用区间、原因和原→替代教室；停用记录可展开查看完整处理结果与历史原因。
+
+本地运行后端测试（无需 PostgreSQL，使用 SQLite 内存库）：
+
+```bash
+cd backend
+python manage.py test --settings=timetable.settings_test
+```
 
 ## License
 

@@ -1,6 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { RouterModule } from '@angular/router';
 import { MatTableModule } from '@angular/material/table';
 import { MatButtonModule } from '@angular/material/button';
 import { MatInputModule } from '@angular/material/input';
@@ -24,7 +25,8 @@ import type { Classroom } from '../../types';
     MatSelectModule,
     MatDialogModule,
     MatIconModule,
-    PortalModule
+    PortalModule,
+    RouterModule
   ],
   template: `
     <div class="page-container">
@@ -34,6 +36,10 @@ import type { Classroom } from '../../types';
         <button mat-raised-button color="primary" (click)="openDialog()">
           <mat-icon>add</mat-icon>
           新建教室
+        </button>
+        <button mat-raised-button color="accent" routerLink="/classroom-suspensions">
+          <mat-icon>event_busy</mat-icon>
+          教室临时停用
         </button>
         <button mat-button (click)="loadData()">
           <mat-icon>refresh</mat-icon>
@@ -71,6 +77,10 @@ import type { Classroom } from '../../types';
               <button mat-icon-button color="primary" (click)="openDialog(item)" title="编辑">
                 <mat-icon>edit</mat-icon>
               </button>
+              <a mat-icon-button color="accent" [routerLink]="['/classroom-suspensions']"
+                 [queryParams]="{ classroom: item.id }" title="临时停用">
+                <mat-icon>event_busy</mat-icon>
+              </a>
               <button mat-icon-button color="warn" (click)="deleteItem(item)" title="删除">
                 <mat-icon>delete</mat-icon>
               </button>

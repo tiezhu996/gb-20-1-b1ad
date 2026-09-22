@@ -87,8 +87,83 @@ export interface ScheduleEntry {
   teacher_name?: string;
   classroom_name?: string;
   class_name?: string;
+  suspension_records?: SuspensionDisposition[];
   created_at?: string;
   updated_at?: string;
+}
+
+export interface SuspensionDisposition {
+  id: number;
+  suspension: number;
+  entry: number | null;
+  action: 'relocated' | 'cancelled';
+  action_display?: string;
+  original_classroom: number;
+  original_classroom_name?: string;
+  new_classroom?: number | null;
+  new_classroom_name?: string | null;
+  class_name?: string;
+  course_name?: string;
+  day_of_week?: number;
+  period?: number;
+  reason?: string;
+  start_date?: string;
+  end_date?: string;
+  suspension_status?: 'pending' | 'applied' | 'recovered';
+  created_at?: string;
+}
+
+export type SuspensionStatus = 'pending' | 'applied' | 'recovered';
+export type SuspensionDisposal = 'relocate' | 'cancel';
+
+export interface ClassroomSuspension {
+  id: number;
+  classroom: number;
+  classroom_name?: string;
+  semester: number;
+  semester_name?: string;
+  start_date: string;
+  end_date: string;
+  reason: string;
+  status: SuspensionStatus;
+  status_display?: string;
+  disposal: '' | SuspensionDisposal;
+  disposal_display?: string;
+  dispositions?: SuspensionDisposition[];
+  confirmed_at?: string;
+  recovered_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SuspensionPreviewItem {
+  entry: ScheduleEntry;
+  candidates: Pick<Classroom, 'id' | 'name' | 'capacity' | 'room_type'>[];
+  chosen_classroom_id: number | null;
+  block_reason: string | null;
+}
+
+export interface SuspensionPreview {
+  suspension: ClassroomSuspension;
+  items: SuspensionPreviewItem[];
+  blocked: boolean;
+  blocking_reasons: string[];
+  affected_count: number;
+}
+
+export interface SuspensionConfirmResult {
+  status: 'applied' | 'recovered' | 'blocked';
+  already_applied?: boolean;
+  already_recovered?: boolean;
+  message?: string;
+  suspension?: ClassroomSuspension;
+  results?: SuspensionDisposition[];
+  blocking_reasons?: string[];
+  items?: {
+    entry_id: number;
+    chosen_classroom_id: number | null;
+    block_reason: string | null;
+  }[];
 }
 
 export interface Conflict {

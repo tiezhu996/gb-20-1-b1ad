@@ -77,6 +77,22 @@ mat-sidenav {
   border-left: 4px solid #7b1fa2;
 }
 
+.cancelled-entry {
+  background-color: #eeeeee !important;
+  border-left: 4px solid #9e9e9e;
+  opacity: 0.85;
+}
+
+.suspension-note {
+  font-size: 11px;
+  color: #1565c0;
+  margin-top: 2px;
+}
+
+.recovered-tag {
+  color: #2e7d32;
+}
+
 .stat-card {
   padding: 20px;
   text-align: center;

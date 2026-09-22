@@ -34,6 +34,10 @@ import { MatIconModule } from '@angular/material/icon';
               <mat-icon>meeting_room</mat-icon>
               <span>教室管理</span>
             </a>
+            <a mat-list-item routerLink="/classroom-suspensions" routerLinkActive="active" class="nav-list-item">
+              <mat-icon>event_busy</mat-icon>
+              <span>教室停用</span>
+            </a>
             <a mat-list-item routerLink="/teachers" routerLinkActive="active" class="nav-list-item">
               <mat-icon>person</mat-icon>
               <span>教师管理</span>

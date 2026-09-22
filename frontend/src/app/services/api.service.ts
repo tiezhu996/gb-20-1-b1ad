@@ -4,7 +4,8 @@ import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
 import type {
   Classroom, Teacher, Class, Course, Semester,
-  ClassCourse, ScheduleEntry, Conflict, SwapRequest, Substitute
+  ClassCourse, ScheduleEntry, Conflict, SwapRequest, Substitute,
+  ClassroomSuspension, SuspensionPreview, SuspensionConfirmResult, SuspensionDisposal
 } from '../types';
 
 @Injectable({ providedIn: 'root' })
@@ -183,5 +184,48 @@ export class ApiService {
       params,
       responseType: 'blob'
     });
+  }
+
+  getClassroomSuspensions(classroomId?: number, semesterId?: number): Observable<ClassroomSuspension[]> {
+    let params = new HttpParams();
+    if (classroomId) params = params.set('classroom', classroomId.toString());
+    if (semesterId) params = params.set('semester', semesterId.toString());
+    return this.http.get<ClassroomSuspension[]>(`${this.baseUrl}/classroom-suspensions/`, { params });
+  }
+
+  createClassroomSuspension(data: {
+    classroom_id: number;
+    semester_id: number;
+    start_date: string;
+    end_date: string;
+    reason: string;
+  }): Observable<SuspensionPreview> {
+    return this.http.post<SuspensionPreview>(`${this.baseUrl}/classroom-suspensions/`, data);
+  }
+
+  getSuspensionPreview(id: number): Observable<SuspensionPreview> {
+    return this.http.get<SuspensionPreview>(`${this.baseUrl}/classroom-suspensions/${id}/preview/`);
+  }
+
+  confirmClassroomSuspension(
+    id: number,
+    disposal: SuspensionDisposal,
+    assignments?: { [entryId: number]: number }
+  ): Observable<SuspensionConfirmResult> {
+    return this.http.post<SuspensionConfirmResult>(
+      `${this.baseUrl}/classroom-suspensions/${id}/confirm/`,
+      { disposal, assignments }
+    );
+  }
+
+  recoverClassroomSuspension(id: number): Observable<SuspensionConfirmResult> {
+    return this.http.post<SuspensionConfirmResult>(
+      `${this.baseUrl}/classroom-suspensions/${id}/recover/`,
+      {}
+    );
+  }
+
+  deleteClassroomSuspension(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/classroom-suspensions/${id}/`);
   }
 }

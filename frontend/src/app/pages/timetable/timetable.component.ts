@@ -15,7 +15,7 @@ import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { ApiService } from '../../services/api.service';
 import type {
-  ScheduleEntry, Semester, Class, Teacher, Classroom
+  ScheduleEntry, Semester, Class, Teacher, Classroom, SuspensionDisposition
 } from '../../types';
 
 @Component({
@@ -136,6 +136,7 @@ import type {
                         class="schedule-card"
                         [class.conflict-entry]="entry.is_conflict"
                         [class.locked-entry]="entry.is_locked"
+                        [class.cancelled-entry]="isCancelled(entry)"
                         style="margin-bottom: 4px;"
                       >
                         <div class="schedule-course">{{ entry.course_name }}</div>
@@ -145,6 +146,12 @@ import type {
                         <div style="margin-top: 4px; display: flex; gap: 4px; flex-wrap: wrap;">
                           <mat-chip *ngIf="entry.is_locked" color="accent" selected>锁定</mat-chip>
                           <mat-chip *ngIf="entry.is_conflict" color="warn" selected>冲突</mat-chip>
+                          <ng-container *ngFor="let rec of entry.suspension_records">
+                            <mat-chip [color]="rec.action === 'cancelled' ? 'warn' : 'primary'"
+                                      selected [title]="suspensionTooltip(rec)">
+                              {{ rec.action === 'cancelled' ? '已停课' : '已调教室' }}
+                            </mat-chip>
+                          </ng-container>
                           <button
                             mat-icon-button
                             size="small"
@@ -153,6 +160,16 @@ import type {
                           >
                             <mat-icon>{{ entry.is_locked ? 'lock' : 'lock_open' }}</mat-icon>
                           </button>
+                        </div>
+                        <div *ngFor="let rec of entry.suspension_records" class="suspension-note"
+                             [title]="suspensionTooltip(rec)">
+                          <ng-container *ngIf="rec.action === 'relocated'">
+                            原 {{ rec.original_classroom_name }} → {{ rec.new_classroom_name }}
+                          </ng-container>
+                          <ng-container *ngIf="rec.action === 'cancelled'">
+                            {{ rec.start_date }}~{{ rec.end_date }} 停课
+                          </ng-container>
+                          <span *ngIf="rec.suspension_status === 'recovered'" class="recovered-tag">（教室已恢复）</span>
                         </div>
                       </mat-card>
                     </ng-container>
@@ -320,6 +337,20 @@ export class TimetableComponent implements OnInit {
 
   getEntryAt(day: number, period: number): ScheduleEntry[] {
     return this.schedules.filter(e => e.day_of_week === day && e.period === period);
+  }
+
+  isCancelled(entry: ScheduleEntry): boolean {
+    return !!entry.suspension_records?.some(r => r.action === 'cancelled');
+  }
+
+  suspensionTooltip(rec: SuspensionDisposition): string {
+    const range = rec.start_date && rec.end_date ? `${rec.start_date}~${rec.end_date}` : '';
+    const action = rec.action === 'cancelled' ? '已停课' : '已调整至替代教室';
+    const room = rec.action === 'relocated' && rec.new_classroom_name
+      ? `（${rec.original_classroom_name} → ${rec.new_classroom_name}）`
+      : '';
+    const status = rec.suspension_status === 'recovered' ? '；教室已恢复使用' : '';
+    return `${action}${room}：${range}，原因：${rec.reason || ''}${status}`;
   }
 
   runAutoSchedule(respectLocked = true): void {

@@ -101,13 +101,19 @@ class CSPScheduler:
         tasks: List[SchedulingTask],
         classrooms_data: Dict[int, Dict],
         teachers_data: Dict[int, Dict],
-        locked_entries: Optional[List[Dict]] = None
+        locked_entries: Optional[List[Dict]] = None,
+        blocked_classroom_slots: Optional[Dict[int, set]] = None
     ) -> Tuple[List[Dict], List[Dict]]:
         self.assignments = []
         self.conflicts = []
         self.classroom_usage.clear()
         self.teacher_usage.clear()
         self.class_usage.clear()
+
+        # 教室临时停用：停用区间覆盖的时段不允许自动排课占用
+        if blocked_classroom_slots:
+            for classroom_id, slots in blocked_classroom_slots.items():
+                self.classroom_usage[classroom_id].update(slots)
 
         if locked_entries:
             for entry in locked_entries:
