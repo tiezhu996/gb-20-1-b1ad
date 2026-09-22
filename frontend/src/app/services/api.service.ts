@@ -4,7 +4,8 @@ import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
 import type {
   Classroom, Teacher, Class, Course, Semester,
-  ClassCourse, ScheduleEntry, Conflict, SwapRequest, Substitute
+  ClassCourse, ScheduleEntry, Conflict, SwapRequest, Substitute,
+  ClassroomSuspension, SuspensionConfirmResult
 } from '../types';
 
 @Injectable({ providedIn: 'root' })
@@ -172,6 +173,42 @@ export class ApiService {
 
   getSubstitutes(): Observable<Substitute[]> {
     return this.http.get<Substitute[]>(`${this.baseUrl}/substitutes/`);
+  }
+
+  getClassroomSuspensions(params?: { classroom_id?: number; semester_id?: number; status?: string }): Observable<ClassroomSuspension[]> {
+    let httpParams = new HttpParams();
+    if (params?.classroom_id) httpParams = httpParams.set('classroom_id', params.classroom_id.toString());
+    if (params?.semester_id) httpParams = httpParams.set('semester_id', params.semester_id.toString());
+    if (params?.status) httpParams = httpParams.set('status', params.status);
+    return this.http.get<ClassroomSuspension[]>(`${this.baseUrl}/classroom-suspensions/`, { params: httpParams });
+  }
+
+  getClassroomSuspension(id: number): Observable<ClassroomSuspension> {
+    return this.http.get<ClassroomSuspension>(`${this.baseUrl}/classroom-suspensions/${id}/`);
+  }
+
+  createClassroomSuspension(data: {
+    classroom: number;
+    semester: number;
+    start_date: string;
+    end_date: string;
+    reason: string;
+  }): Observable<ClassroomSuspension> {
+    return this.http.post<ClassroomSuspension>(`${this.baseUrl}/classroom-suspensions/`, data);
+  }
+
+  confirmClassroomSuspension(id: number): Observable<SuspensionConfirmResult> {
+    return this.http.post<SuspensionConfirmResult>(`${this.baseUrl}/classroom-suspensions/${id}/confirm/`, {});
+  }
+
+  restoreClassroomSuspension(id: number): Observable<{ already_restored: boolean; message: string; suspension: ClassroomSuspension }> {
+    return this.http.post<{ already_restored: boolean; message: string; suspension: ClassroomSuspension }>(
+      `${this.baseUrl}/classroom-suspensions/${id}/restore/`, {}
+    );
+  }
+
+  deleteClassroomSuspension(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/classroom-suspensions/${id}/`);
   }
 
   exportPdf(semesterId: number, type: 'class' | 'teacher' | 'classroom', id: number): Observable<Blob> {

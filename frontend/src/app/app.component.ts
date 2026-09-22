@@ -58,6 +58,10 @@ import { MatIconModule } from '@angular/material/icon';
               <mat-icon>grid_view</mat-icon>
               <span>课表管理</span>
             </a>
+            <a mat-list-item routerLink="/classroom-suspensions" routerLinkActive="active" class="nav-list-item">
+              <mat-icon>event_busy</mat-icon>
+              <span>教室停用</span>
+            </a>
             <a mat-list-item routerLink="/conflicts" routerLinkActive="active" class="nav-list-item">
               <mat-icon>warning</mat-icon>
               <span>冲突管理</span>

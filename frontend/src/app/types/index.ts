@@ -79,6 +79,8 @@ export interface ScheduleEntry {
   day_of_week: number;
   period: number;
   is_locked: boolean;
+  is_suspended: boolean;
+  schedule_note?: string;
   is_conflict: boolean;
   conflict_type?: string;
   original_teacher?: number;
@@ -86,6 +88,7 @@ export interface ScheduleEntry {
   course_name?: string;
   teacher_name?: string;
   classroom_name?: string;
+
   class_name?: string;
   created_at?: string;
   updated_at?: string;
@@ -132,4 +135,49 @@ export interface Substitute {
   substitute_teacher_name?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface ClassroomSuspensionItem {
+  id: number;
+  suspension: number;
+  entry: number;
+  action: 'relocate' | 'suspend' | 'blocked';
+  original_classroom: number;
+  new_classroom?: number | null;
+  note: string;
+  course_name?: string;
+  class_name?: string;
+  teacher_name?: string;
+  day_of_week?: number;
+  period?: number;
+  is_locked?: boolean;
+  original_classroom_name?: string;
+  new_classroom_name?: string;
+  action_display?: string;
+  created_at?: string;
+}
+
+export interface ClassroomSuspension {
+  id: number;
+  classroom: number;
+  semester: number;
+  start_date: string;
+  end_date: string;
+  reason: string;
+  status: 'draft' | 'applied' | 'blocked' | 'restored';
+  blocking_reason: string;
+  applied_at?: string | null;
+  restored_at?: string | null;
+  classroom_name?: string;
+  semester_name?: string;
+  status_display?: string;
+  items?: ClassroomSuspensionItem[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SuspensionConfirmResult {
+  already_applied: boolean;
+  message: string;
+  suspension: ClassroomSuspension;
 }

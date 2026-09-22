@@ -1,5 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterModule } from '@angular/router';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { MatTableModule } from '@angular/material/table';
 import { MatButtonModule } from '@angular/material/button';
@@ -16,6 +17,7 @@ import type { Classroom } from '../../types';
   standalone: true,
   imports: [
     CommonModule,
+    RouterModule,
     FormsModule,
     ReactiveFormsModule,
     MatTableModule,
@@ -70,6 +72,9 @@ import type { Classroom } from '../../types';
             <td mat-cell *matCellDef="let item" class="action-cell">
               <button mat-icon-button color="primary" (click)="openDialog(item)" title="编辑">
                 <mat-icon>edit</mat-icon>
+              </button>
+              <button mat-icon-button color="accent" routerLink="/classroom-suspensions" title="临时停用登记">
+                <mat-icon>event_busy</mat-icon>
               </button>
               <button mat-icon-button color="warn" (click)="deleteItem(item)" title="删除">
                 <mat-icon>delete</mat-icon>

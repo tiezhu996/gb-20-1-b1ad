@@ -82,6 +82,7 @@ npm start
 | 手动调整 | 支持锁定课程、拖拽调整（后端API就绪） |
 | 冲突检测 | 自动检测教师/教室/班级三类时间冲突 |
 | 调课代课 | 支持课程交换和教师代课安排 |
+| 教室临时停用 | 登记停用区间与原因，自动匹配替代教室或安排停课，支持恢复 |
 | 课表查看 | 班级/教师/教室三种视角的课表展示 |
 | 导出功能 | PDF 导出（ReportLab）和图片导出（html2canvas） |
 
@@ -132,12 +133,14 @@ npm start
 │   │   └── admin.py
 │   │
 │   └── scheduling/             # 排课业务应用
-│       ├── models.py           # 课程分配、课表条目、冲突、调课模型
+│       ├── models.py           # 课程分配、课表条目、冲突、调课、教室停用模型
 │       ├── serializers.py
-│       ├── views.py            # 排课、调课、代课、导出 API
+│       ├── views.py            # 排课、调课、代课、教室停用、导出 API
 │       ├── urls.py
 │       ├── admin.py
 │       ├── csp_solver.py       # CSP 排课算法核心
+│       ├── suspension_service.py # 教室停用处置（受影响课程计算、替代教室匹配）
+│       ├── tests.py            # 排课与教室停用测试
 │       └── pdf_export.py       # PDF 导出逻辑
 │
 └── frontend/                   # 前端 Angular 项目
@@ -171,6 +174,7 @@ npm start
                 ├── semesters/
                 ├── class-courses/
                 ├── timetable/
+                ├── classroom-suspensions/
                 └── conflicts/
 ```
 
@@ -249,6 +253,19 @@ docker compose exec backend python manage.py createsuperuser
   - 高优先级课程（主科）优先安排在上午
   - 低优先级课程（副科）可安排在下午
 
+## 教室临时停用说明
+
+教室因检修、装修等原因需要临时停用时，按以下流程处理：
+
+1. **登记停用**：在"教室停用"页面选择教室、学期，填写停用日期区间和原因。系统自动列出停用区间内该教室的受影响课程，并为每门课程匹配替代教室（同类型、容量足够、该时段无教室/教师/班级冲突）。
+2. **核对处置方案**：
+   - 有合适替代教室的课程 → 调整到替代教室
+   - 无可用替代教室的课程 → 安排停课
+   - 锁定课程不能改动；任一课程无法安置时，整批保持原课表并展示阻断原因
+3. **确认生效**：点击"确认生效"后一次性写入全部替代安排或停课记录；重复或并发确认只会生效一次。
+4. **停用期约束**：停用期内自动排课和手动调整都不能占用该教室；执行"恢复教室"后可重新使用。
+5. **结果回读**：课表页会展示调整说明（如"A101 → B201"）和"停课"标记，停用记录及历史原因可随时在"教室停用"页面查询。
+
 ## API 接口速查
 
 | 接口 | 方法 | 说明 |
@@ -266,6 +283,9 @@ docker compose exec backend python manage.py createsuperuser
 | `/api/schedules/auto_schedule/` | POST | 执行自动排课 |
 | `/api/schedules/swap/` | POST | 交换两个课表条目 |
 | `/api/schedules/substitute/` | POST | 安排代课教师 |
+| `/api/classroom-suspensions/` | GET/POST | 教室停用登记（自动列出受影响课程并匹配替代教室） |
+| `/api/classroom-suspensions/{id}/confirm/` | POST | 确认停用处置（幂等，重复/并发确认只生效一次） |
+| `/api/classroom-suspensions/{id}/restore/` | POST | 恢复教室，重新参与排课 |
 | `/api/schedules/export_pdf/?type=&id=&semester_id=` | GET | 导出 PDF 课表 |
 | `/api/conflicts/` | GET | 查询冲突列表 |
 

@@ -1,4 +1,6 @@
 from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -6,16 +8,19 @@ from rest_framework.permissions import AllowAny
 from django.db import transaction
 from core.models import Semester, Classroom, Teacher, Class
 from .models import (
-    ClassCourse, ScheduleEntry, Conflict, SwapRequest, Substitute
+    ClassCourse, ScheduleEntry, Conflict, SwapRequest, Substitute,
+    ClassroomSuspension, ClassroomSuspensionItem
 )
 from .serializers import (
     ClassCourseSerializer, ScheduleEntrySerializer,
     ScheduleEntryDetailSerializer, ConflictSerializer,
     SwapRequestSerializer, SubstituteSerializer,
     AutoScheduleRequestSerializer, ConflictCheckSerializer,
-    SwapScheduleRequestSerializer, SubstituteRequestSerializer
+    SwapScheduleRequestSerializer, SubstituteRequestSerializer,
+    ClassroomSuspensionSerializer, ClassroomSuspensionCreateSerializer
 )
 from .csp_solver import CSPScheduler, ConflictDetector, SchedulingTask, TimeSlot
+from .suspension_service import compute_suspension_plan, record_plan, apply_suspension
 from .pdf_export import (
     generate_class_timetable_pdf,
     generate_teacher_timetable_pdf,
@@ -40,6 +45,50 @@ class ScheduleEntryViewSet(viewsets.ModelViewSet):
         if self.action in ['list', 'retrieve']:
             return ScheduleEntryDetailSerializer
         return ScheduleEntrySerializer
+
+    @staticmethod
+    def _suspension_guard(request, instance=None):
+        """停用期内的教室不允许通过普通排课占用"""
+        classroom_id = request.data.get('classroom')
+        if not classroom_id:
+            return None
+        semester_id = request.data.get('semester')
+        if not semester_id and instance is not None:
+            semester_id = instance.semester_id
+        if not semester_id:
+            return None
+        suspended = (
+            ClassroomSuspension.objects
+            .filter(classroom_id=classroom_id, semester_id=semester_id)
+            .exclude(status='restored')
+            .first()
+        )
+        if suspended:
+            return Response(
+                {'error': (f"教室 {suspended.classroom.name} 在 "
+                           f"{suspended.start_date} 至 {suspended.end_date} 期间停用"
+                           f"（{suspended.reason}），不能安排课程")},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return None
+
+    def create(self, request, *args, **kwargs):
+        guard = self._suspension_guard(request)
+        if guard is not None:
+            return guard
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        guard = self._suspension_guard(request, instance=self.get_object())
+        if guard is not None:
+            return guard
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        guard = self._suspension_guard(request, instance=self.get_object())
+        if guard is not None:
+            return guard
+        return super().partial_update(request, *args, **kwargs)
 
     @action(detail=False, methods=['get'])
     def by_semester(self, request):
@@ -117,12 +166,21 @@ class ScheduleEntryViewSet(viewsets.ModelViewSet):
                 classroom_capacity=cc.class_id.student_count or 40
             ))
 
+        # 停用期内（未恢复）的教室不参与普通排课
+        suspended_rooms = {
+            row['classroom_id']: row['reason']
+            for row in ClassroomSuspension.objects
+            .filter(semester=semester)
+            .exclude(status='restored')
+            .values('classroom_id', 'reason')
+        }
         classrooms_data = {
             c.id: {
                 'room_type': c.room_type,
                 'capacity': c.capacity,
                 'name': c.name
             } for c in Classroom.objects.filter(is_active=True)
+            if c.id not in suspended_rooms
         }
 
         teachers_data = {
@@ -146,6 +204,15 @@ class ScheduleEntryViewSet(viewsets.ModelViewSet):
         assignments, scheduling_conflicts = scheduler.schedule(
             tasks, classrooms_data, teachers_data, locked_entries
         )
+
+        if suspended_rooms:
+            names = '、'.join(
+                Classroom.objects.filter(id__in=suspended_rooms).values_list('name', flat=True)
+            )
+            scheduling_conflicts.append({
+                'type': 'classroom_suspension',
+                'message': f"教室 {names} 处于停用期，本次排课未使用"
+            })
 
         with transaction.atomic():
             if respect_locked:
@@ -172,7 +239,7 @@ class ScheduleEntryViewSet(viewsets.ModelViewSet):
             ScheduleEntry.objects.bulk_create(bulk_entries)
 
             all_entries = ScheduleEntry.objects.filter(
-                semester=semester
+                semester=semester, is_suspended=False
             ).values('id', 'teacher_id', 'classroom_id', 'class_id', 'day_of_week', 'period')
 
             detector = ConflictDetector()
@@ -219,7 +286,7 @@ class ScheduleEntryViewSet(viewsets.ModelViewSet):
 
         semester_id = req_serializer.validated_data['semester_id']
         entries = ScheduleEntry.objects.filter(
-            semester_id=semester_id
+            semester_id=semester_id, is_suspended=False
         ).values('id', 'teacher_id', 'classroom_id', 'class_id', 'day_of_week', 'period')
 
         detector = ConflictDetector()
@@ -376,3 +443,118 @@ class SubstituteViewSet(viewsets.ModelViewSet):
     )
     serializer_class = SubstituteSerializer
     permission_classes = [AllowAny]
+
+
+class ClassroomSuspensionViewSet(viewsets.ModelViewSet):
+    """教室临时停用：登记、受影响课程预览、确认生效、恢复"""
+
+    queryset = ClassroomSuspension.objects.select_related(
+        'classroom', 'semester'
+    ).prefetch_related(
+        'items__entry__course', 'items__entry__class_id', 'items__entry__teacher',
+        'items__original_classroom', 'items__new_classroom'
+    )
+    serializer_class = ClassroomSuspensionSerializer
+    permission_classes = [AllowAny]
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return ClassroomSuspensionCreateSerializer
+        return ClassroomSuspensionSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        classroom_id = self.request.query_params.get('classroom_id')
+        semester_id = self.request.query_params.get('semester_id')
+        status_param = self.request.query_params.get('status')
+        if classroom_id:
+            qs = qs.filter(classroom_id=classroom_id)
+        if semester_id:
+            qs = qs.filter(semester_id=semester_id)
+        if status_param:
+            qs = qs.filter(status=status_param)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        serializer = ClassroomSuspensionCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            suspension = serializer.save()
+            # 登记后立即列出受影响课程并匹配替代教室
+            plan_items, blocking = compute_suspension_plan(suspension)
+            if blocking:
+                suspension.status = 'blocked'
+                suspension.blocking_reason = '；'.join(blocking)
+                suspension.save(update_fields=['status', 'blocking_reason', 'updated_at'])
+            record_plan(suspension, plan_items)
+        return Response(
+            ClassroomSuspensionSerializer(suspension).data,
+            status=status.HTTP_201_CREATED
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        suspension = self.get_object()
+        if suspension.status in ('applied', 'restored'):
+            return Response(
+                {'error': '已生效或已恢复的停用单不能删除（已生效的请先执行恢复）'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'])
+    def confirm(self, request, pk=None):
+        """确认生效：一次性写入替代安排或停课记录，重复/并发确认只生效一次"""
+        with transaction.atomic():
+            # 锁定学期行，串行化同学期的并发确认，避免替代教室被重复占用
+            suspension = get_object_or_404(
+                ClassroomSuspension.objects.select_for_update(), pk=pk
+            )
+            Semester.objects.select_for_update().get(pk=suspension.semester_id)
+
+            if suspension.status == 'applied':
+                return Response({
+                    'already_applied': True,
+                    'message': '该停用单已确认生效，重复确认不会重复执行',
+                    'suspension': ClassroomSuspensionSerializer(suspension).data
+                })
+            if suspension.status == 'restored':
+                return Response(
+                    {'error': '该停用单已恢复，不能再确认'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            _, blocking = apply_suspension(suspension)
+            data = ClassroomSuspensionSerializer(suspension).data
+            if blocking:
+                return Response({
+                    'already_applied': False,
+                    'message': '存在无法安置的课程，整批保持原课表',
+                    'suspension': data
+                })
+            return Response({
+                'already_applied': False,
+                'message': '停用处置已生效，替代安排/停课记录已写入',
+                'suspension': data
+            })
+
+    @action(detail=True, methods=['post'])
+    def restore(self, request, pk=None):
+        """恢复教室：结束后停用期，教室可重新参与排课"""
+        with transaction.atomic():
+            suspension = get_object_or_404(
+                ClassroomSuspension.objects.select_for_update(), pk=pk
+            )
+            if suspension.status == 'restored':
+                return Response({
+                    'already_restored': True,
+                    'message': '该停用单已处于恢复状态',
+                    'suspension': ClassroomSuspensionSerializer(suspension).data
+                })
+            suspension.status = 'restored'
+            suspension.restored_at = timezone.now()
+            suspension.save(update_fields=['status', 'restored_at', 'updated_at'])
+        return Response({
+            'already_restored': False,
+            'message': '教室已恢复，可重新参与排课',
+            'suspension': ClassroomSuspensionSerializer(suspension).data
+        })

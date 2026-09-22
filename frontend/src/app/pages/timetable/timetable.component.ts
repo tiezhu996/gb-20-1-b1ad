@@ -15,7 +15,7 @@ import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { ApiService } from '../../services/api.service';
 import type {
-  ScheduleEntry, Semester, Class, Teacher, Classroom
+  ScheduleEntry, Semester, Class, Teacher, Classroom, ClassroomSuspension
 } from '../../types';
 
 @Component({
@@ -108,6 +108,18 @@ import type {
         </button>
       </div>
 
+      <div *ngIf="activeSuspension" class="suspension-banner">
+        <mat-icon>event_busy</mat-icon>
+        <span>
+          教室 {{ activeSuspension.classroom_name }} 于
+          {{ activeSuspension.start_date }} 至 {{ activeSuspension.end_date }} 停用
+          （{{ activeSuspension.reason }}），状态：{{ activeSuspension.status_display }}。
+          <span *ngIf="activeSuspension.status === 'blocked' && activeSuspension.blocking_reason">
+            阻断原因：{{ activeSuspension.blocking_reason }}
+          </span>
+        </span>
+      </div>
+
       <div class="timetable-container" #timetableContainer>
         <div *ngIf="schedules.length > 0">
           <h3 style="padding: 16px 16px 0; margin: 0;">{{ currentViewTitle }}</h3>
@@ -136,14 +148,19 @@ import type {
                         class="schedule-card"
                         [class.conflict-entry]="entry.is_conflict"
                         [class.locked-entry]="entry.is_locked"
+                        [class.suspended-entry]="entry.is_suspended"
                         style="margin-bottom: 4px;"
                       >
-                        <div class="schedule-course">{{ entry.course_name }}</div>
+                        <div class="schedule-course" [style.text-decoration]="entry.is_suspended ? 'line-through' : 'none'">
+                          {{ entry.course_name }}
+                        </div>
                         <div class="schedule-detail">{{ entry.teacher_name }}</div>
                         <div class="schedule-detail">{{ entry.classroom_name }}</div>
                         <div class="schedule-detail">{{ entry.class_name }}</div>
+                        <div *ngIf="entry.schedule_note" class="schedule-note">{{ entry.schedule_note }}</div>
                         <div style="margin-top: 4px; display: flex; gap: 4px; flex-wrap: wrap;">
                           <mat-chip *ngIf="entry.is_locked" color="accent" selected>锁定</mat-chip>
+                          <mat-chip *ngIf="entry.is_suspended" color="warn" selected>停课</mat-chip>
                           <mat-chip *ngIf="entry.is_conflict" color="warn" selected>冲突</mat-chip>
                           <button
                             mat-icon-button
@@ -190,6 +207,7 @@ export class TimetableComponent implements OnInit {
   teachers: Teacher[] = [];
   classrooms: Classroom[] = [];
   schedules: ScheduleEntry[] = [];
+  suspensions: ClassroomSuspension[] = [];
   selectedSemesterId: number | null = null;
   selectedClassId: number | null = null;
   selectedTeacherId: number | null = null;
@@ -215,6 +233,13 @@ export class TimetableComponent implements OnInit {
     if (this.viewMode === 'teacher') return !!this.selectedTeacherId;
     if (this.viewMode === 'classroom') return !!this.selectedClassroomId;
     return false;
+  }
+
+  get activeSuspension(): ClassroomSuspension | null {
+    if (this.viewMode !== 'classroom' || !this.selectedClassroomId) return null;
+    return this.suspensions.find(
+      s => s.classroom === this.selectedClassroomId && s.status !== 'restored'
+    ) || null;
   }
 
   get currentViewTitle(): string {
@@ -301,6 +326,10 @@ export class TimetableComponent implements OnInit {
 
   loadSchedules(): void {
     if (!this.selectedSemesterId) return;
+
+    this.api.getClassroomSuspensions({ semester_id: this.selectedSemesterId }).subscribe(data => {
+      this.suspensions = data;
+    });
 
     let obs;
     if (this.viewMode === 'class' && this.selectedClassId) {

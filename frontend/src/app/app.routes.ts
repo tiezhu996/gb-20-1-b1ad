@@ -35,6 +35,10 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/timetable/timetable.component').then(m => m.TimetableComponent)
   },
   {
+    path: 'classroom-suspensions',
+    loadComponent: () => import('./pages/classroom-suspensions/classroom-suspensions.component').then(m => m.ClassroomSuspensionsComponent)
+  },
+  {
     path: 'conflicts',
     loadComponent: () => import('./pages/conflicts/conflicts.component').then(m => m.ConflictsComponent)
   }
